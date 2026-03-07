@@ -1,0 +1,388 @@
+# Module Indicators — Tai Lieu Trien Khai
+
+> **Module**: Indicators Library
+> **Vi tri**: `src/utils/indicators/`
+> **Ngay cap nhat**: 2026-03-07
+> **Trang thai**: Done — 6 indicators da implement va test OK
+
+---
+
+## 1. Tong Quan
+
+Thu vien indicator cung cap cac ham tinh toan ky thuat cho toan bo he thong.
+
+**Nguyen tac thiet ke:**
+- Moi indicator = 1 file rieng biet → de test, de them moi, de tim khi can sua
+- Tat ca ham nhan vao `pd.Series` va tra ve `pd.Series` (hoac tuple of Series) → nhat quan
+- Khong co trang thai toan cuc (stateless) → thread-safe, de su dung song song
+- Khong phy thuoc thu vien ngoai tru `pandas` va `numpy`
+
+```
+src/utils/indicators/
+├── __init__.py          # Package registry
+├── MA.py                # SMA, EMA
+├── MACD.py              # MACD, Signal line, Histogram
+├── ATR.py               # Average True Range (Wilder)
+├── RSI.py               # Relative Strength Index
+├── BollingerBands.py    # BB + %B + Bandwidth
+└── ADX.py               # ADX + DI+ + DI-
+```
+
+**Phu thuoc giua cac indicator:**
+
+```
+MA.py
+ └── calculate_ema()
+      └── duoc dung boi MACD.py
+```
+
+MACD.py import `calculate_ema` tu `MA.py`. Cac indicator khac doc lap hoan toan.
+
+---
+
+## 2. Cach Import
+
+```python
+# Import truc tiep theo tung ham can dung (khuyen nghi)
+from src.utils.indicators.MA               import calculate_sma, calculate_ema
+from src.utils.indicators.MACD             import calculate_macd
+from src.utils.indicators.ATR              import calculate_atr
+from src.utils.indicators.RSI              import calculate_rsi
+from src.utils.indicators.BollingerBands   import (
+    calculate_bollinger_bands,
+    calculate_bb_percent_b,
+    calculate_bb_bandwidth,
+)
+from src.utils.indicators.ADX             import calculate_adx
+```
+
+---
+
+## 3. Chi Tiet Tung Indicator
+
+### 3.1 MA — Moving Average (`MA.py`)
+
+| Ham | Tham so | Gia tri mac dinh | Tra ve |
+|---|---|---|---|
+| `calculate_sma` | `close, period` | `period=20` | `pd.Series` |
+| `calculate_ema` | `close, period` | `period=20` | `pd.Series` |
+
+**Cong thuc:**
+```
+SMA[i] = mean(close[i-period+1 : i+1])
+EMA[i] = close[i] * k + EMA[i-1] * (1-k),  k = 2 / (period + 1)
+```
+
+**Dac diem:**
+- SMA: co `period-1` gia tri dau la `NaN`
+- EMA: khong co `NaN` (tinh tu diem dau tien)
+- EMA phan ung nhanh hon SMA voi bien dong gia
+
+```python
+sma20 = calculate_sma(df["close"], period=20)
+ema5  = calculate_ema(df["close"], period=5)
+ema25 = calculate_ema(df["close"], period=25)
+
+# MA Crossover signal
+crossover_up   = (ema5 > ema25) & (ema5.shift(1) <= ema25.shift(1))
+crossover_down = (ema5 < ema25) & (ema5.shift(1) >= ema25.shift(1))
+```
+
+**Dung boi:** `MACD.py`, `strategy_MAcrossover.py`, `strategy_comboATR.py`
+
+---
+
+### 3.2 MACD (`MACD.py`)
+
+| Ham | Tham so | Gia tri mac dinh | Tra ve |
+|---|---|---|---|
+| `calculate_macd` | `close, fast_period, slow_period, signal_period` | `5, 25, 5` | `(macd, signal, hist)` |
+
+**Cong thuc:**
+```
+MACD line   = EMA(close, fast) - EMA(close, slow)
+Signal line = EMA(MACD line, signal)
+Histogram   = MACD line - Signal line
+```
+
+**Giai thich Histogram:**
+- `hist > 0`: MACD tren Signal → dong luc tang
+- `hist < 0`: MACD duoi Signal → dong luc giam
+- `hist doi dau tu am sang duong`: co the la tin hieu BUY
+- `hist doi dau tu duong sang am`: co the la tin hieu SELL
+
+```python
+macd, signal, hist = calculate_macd(
+    df["close"],
+    fast_period=5,
+    slow_period=25,
+    signal_period=5,
+)
+df["MACD"]        = macd
+df["MACD_Signal"] = signal
+df["MACD_Hist"]   = hist
+
+# Tin hieu crossover
+buy_signal  = (macd > signal) & (macd.shift(1) <= signal.shift(1))
+sell_signal = (macd < signal) & (macd.shift(1) >= signal.shift(1))
+```
+
+**Dung boi:** `strategy_comboATR.py` (tin hieu chinh)
+
+---
+
+### 3.3 ATR — Average True Range (`ATR.py`)
+
+| Ham | Tham so | Gia tri mac dinh | Tra ve |
+|---|---|---|---|
+| `calculate_atr` | `high, low, close, period` | `period=5` | `pd.Series` (name="ATR") |
+
+**Cong thuc (Wilder's smoothing):**
+```
+TR[i]  = max(High-Low, |High-PrevClose|, |Low-PrevClose|)
+ATR[0] = TR[0]
+ATR[i] = (ATR[i-1] * (period-1) + TR[i]) / period
+```
+
+> [!IMPORTANT]
+> **Wilder's smoothing KHAC voi EMA:**
+> - EMA: multiplier `k = 2/(n+1)` — phan ung nhanh hon
+> - Wilder: multiplier `k = 1/n` — lam on hon, it nhay cam hon
+> - ATR trong he thong dung Wilder (goc tu NP) nen ket qua sat voi TradingView
+
+**Ung dung tinh SL/TP dong:**
+```python
+atr5 = calculate_atr(df["high"], df["low"], df["close"], period=5)
+
+# Dung ATR lam co gia SL va TP
+df["SL_distance"] = 1.5 * atr5   # SL cach entry 1.5 x ATR
+df["TP_distance"] = 3.0 * atr5   # TP cach entry 3.0 x ATR
+
+# Tinh gia thuc te
+df["SL_buy"] = df["close"] - df["SL_distance"]
+df["TP_buy"] = df["close"] + df["TP_distance"]
+```
+
+**Dung boi:** `strategy_comboATR.py` (core logic tinh SL/TP)
+
+---
+
+### 3.4 RSI — Relative Strength Index (`RSI.py`)
+
+| Ham | Tham so | Gia tri mac dinh | Tra ve |
+|---|---|---|---|
+| `calculate_rsi` | `close, period` | `period=14` | `pd.Series` (name="RSI") |
+
+**Cong thuc:**
+```
+delta    = close.diff()
+gain     = max(delta, 0)
+loss     = max(-delta, 0)
+avg_gain = SMA(gain, period)    # xap xi Wilder
+avg_loss = SMA(loss, period)
+RS       = avg_gain / avg_loss
+RSI      = 100 - (100 / (1 + RS))
+```
+
+**Nguong phan tich:**
+
+| Nguong | Y nghia | Hanh dong tham khao |
+|---|---|---|
+| RSI > 70 | Qua mua (overbought) | Xem xet SELL / dong long |
+| RSI 50-70 | Vung tang (bullish) | Giu long, bo loc SELL |
+| RSI = 50 | Trung tinh (neutral) | Cho tin hieu ro hon |
+| RSI 30-50 | Vung giam (bearish) | Giu short, bo loc BUY |
+| RSI < 30 | Qua ban (oversold) | Xem xet BUY / dong short |
+
+```python
+rsi14 = calculate_rsi(df["close"], period=14)
+
+overbought = rsi14 > 70   # Bool Series
+oversold   = rsi14 < 30
+
+# Bo loc: chi BUY khi RSI oversold
+buy_filtered = buy_signal & oversold
+```
+
+**Dung boi:** `strategy_comboATR.py` (bo loc tin hieu)
+
+---
+
+### 3.5 Bollinger Bands (`BollingerBands.py`)
+
+| Ham | Tham so | Gia tri mac dinh | Tra ve |
+|---|---|---|---|
+| `calculate_bollinger_bands` | `close, period, std_dev` | `20, 2.0` | `(upper, middle, lower)` |
+| `calculate_bb_percent_b` | `close, upper, lower` | — | `pd.Series` (name="BB_pctB") |
+| `calculate_bb_bandwidth` | `upper, middle, lower` | — | `pd.Series` (name="BB_bandwidth") |
+
+**Cong thuc:**
+```
+Middle    = SMA(close, period)
+Std       = StdDev(close, period)   # sample std, ddof=1
+Upper     = Middle + std_dev * Std
+Lower     = Middle - std_dev * Std
+
+%B        = (close - Lower) / (Upper - Lower)
+Bandwidth = (Upper - Lower) / Middle
+```
+
+**Y nghia %B:**
+
+| Gia tri %B | Y nghia |
+|---|---|
+| > 1.0 | Gia thoat khoi upper band (qua mua manh) |
+| = 1.0 | Gia cham upper band |
+| = 0.5 | Gia o giua dai |
+| = 0.0 | Gia cham lower band |
+| < 0.0 | Gia thoat khoi lower band (qua ban manh) |
+
+**Y nghia Bandwidth:**
+- Bandwidth nho → thi truong dang tich luy (Bollinger Squeeze)
+- Bandwidth tang dot bien → co the xuat hien breakout
+- Thich hop phat hien cac thoi diem bien dong cao
+
+```python
+upper, mid, lower = calculate_bollinger_bands(df["close"], period=20, std_dev=2.0)
+pct_b     = calculate_bb_percent_b(df["close"], upper, lower)
+bandwidth = calculate_bb_bandwidth(upper, mid, lower)
+
+# Tin hieu: gia cham band
+touch_upper = df["close"] >= upper   # qua mua
+touch_lower = df["close"] <= lower   # qua ban
+
+# Bo loc Squeeze: chi giao dich khi Bandwidth > nguong
+squeeze_over = bandwidth > bandwidth.rolling(20).mean()
+```
+
+**Dung boi:** `strategy_comboATR.py` (tuy chon: bo loc them)
+
+---
+
+### 3.6 ADX — Average Directional Index (`ADX.py`)
+
+| Ham | Tham so | Gia tri mac dinh | Tra ve |
+|---|---|---|---|
+| `calculate_adx` | `high, low, close, period` | `period=14` | `(adx, plus_di, minus_di)` |
+
+**Cong thuc (Wilder's method):**
+```
+TR       = max(High-Low, |High-PrevClose|, |Low-PrevClose|)
++DM      = up_move   neu up_move > down_move va up_move > 0
+-DM      = down_move neu down_move > up_move va down_move > 0
++DI = 100 * ewm(+DM, alpha=1/n) / ewm(TR, alpha=1/n)
+-DI = 100 * ewm(-DM, alpha=1/n) / ewm(TR, alpha=1/n)
+DX  = 100 * |+DI - -DI| / (+DI + -DI)
+ADX = ewm(DX, alpha=1/n)
+```
+
+**Nguong ADX:**
+
+| ADX | Y nghia |
+|---|---|
+| < 20 | Xu huong yeu, thi truong di ngang |
+| 20-25 | Xu huong batu dau hinh thanh |
+| > 25 | Xu huong ro rang, nen giao dich theo xu huong |
+| > 50 | Xu huong rat manh |
+
+**Ket hop ADX + DI:**
+```python
+adx, plus_di, minus_di = calculate_adx(df["high"], df["low"], df["close"], period=14)
+
+strong_trend = adx > 25
+uptrend      = plus_di > minus_di    # xu huong tang
+downtrend    = minus_di > plus_di    # xu huong giam
+
+# Chi BUY khi xu huong tang va ADX du manh
+buy_with_trend  = buy_signal & strong_trend & uptrend
+sell_with_trend = sell_signal & strong_trend & downtrend
+```
+
+**Dung boi:** `strategy_comboATR.py` (tuy chon: bo loc xu huong)
+
+---
+
+## 4. Tong Hop API
+
+| Indicator | File | Ham chinh | Inputs | Output |
+|---|---|---|---|---|
+| SMA | `MA.py` | `calculate_sma(close, period=20)` | close | Series |
+| EMA | `MA.py` | `calculate_ema(close, period=20)` | close | Series |
+| MACD | `MACD.py` | `calculate_macd(close, 5, 25, 5)` | close | (macd, signal, hist) |
+| ATR | `ATR.py` | `calculate_atr(high, low, close, period=5)` | H,L,C | Series |
+| RSI | `RSI.py` | `calculate_rsi(close, period=14)` | close | Series |
+| BB | `BollingerBands.py` | `calculate_bollinger_bands(close, 20, 2.0)` | close | (upper, mid, lower) |
+| BB %B | `BollingerBands.py` | `calculate_bb_percent_b(close, upper, lower)` | — | Series |
+| BB BW | `BollingerBands.py` | `calculate_bb_bandwidth(upper, mid, lower)` | — | Series |
+| ADX | `ADX.py` | `calculate_adx(high, low, close, period=14)` | H,L,C | (adx, +di, -di) |
+
+---
+
+## 5. Them Indicator Moi
+
+De them indicator moi (vi du: Stochastic):
+
+**Buoc 1:** Tao file moi trong `src/utils/indicators/`
+```
+src/utils/indicators/Stochastic.py
+```
+
+**Buoc 2:** Viet ham theo chuan:
+```python
+# Stochastic.py
+import pandas as pd
+
+def calculate_stochastic(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    k_period: int = 14,
+    d_period: int = 3,
+) -> tuple[pd.Series, pd.Series]:
+    """
+    Tinh Stochastic Oscillator.
+    Returns: (K, D) - moi cai la pd.Series
+    """
+    lowest_low   = low.rolling(window=k_period).min()
+    highest_high = high.rolling(window=k_period).max()
+    k = 100 * (close - lowest_low) / (highest_high - lowest_low)
+    d = k.rolling(window=d_period).mean()
+    return k.rename("Stoch_K"), d.rename("Stoch_D")
+```
+
+**Buoc 3:** Dang ky trong `config/indicator_list.json`:
+```json
+["MA", "MACD", "ATR", "RSI", "BollingerBands", "ADX", "Stochastic"]
+```
+
+**Buoc 4:** Cap nhat `src/utils/indicators/__init__.py`.
+
+---
+
+## 6. Ket Qua Test Thuc Te
+
+Chay tren 50 nen random (seed=42):
+
+```
+SMA20 : [92.70, 92.49, 92.21]
+EMA5  : [90.21, 90.30, 89.78]
+MACD  : [-3.04, -2.74, -2.93]  /  Signal: [-3.00, -2.91, -2.92]
+ATR5  : [1.16, 0.99, 1.18]
+RSI14 : [29.64, 26.37, 25.05]  <- gan oversold (< 30)
+BB %B : [0.19, 0.26, 0.10]     <- trong dai binh thuong
+ADX   : [29.15, 28.89, 29.40]  <- > 25 = xu huong ro rang
++DI   : [23.64, 24.46, 21.72]
+-DI   : [42.01, 41.12, 46.20]  <- -DI > +DI = xu huong giam
+
+ALL INDICATORS OK - No errors
+```
+
+---
+
+## 7. Buoc Tiep Theo
+
+```
+Module tiep theo -> src/strategies/strategy_comboATR.py    (su dung MACD + ATR + RSI)
+                 -> src/strategies/strategy_MAcrossover.py  (su dung EMA crossover)
+                 -> tests/test_indicators.py               (unit test tung ham)
+```

@@ -3,5 +3,6 @@
     "indicator_MACD",
     "indicator_ATR",
     "indicator_RSI",
-    "indicator_BollingerBands"
+    "indicator_BollingerBands",
+    "indicator_ADX"
 ]

@@ -74,22 +74,26 @@ _SQLALCHEMY_URL = f"mssql+pyodbc:///?odbc_connect={quote_plus(_connection_string
 # ─────────────────────────────────────────────
 # SQLAlchemy Sync Engine (dùng cho pandas read_sql)
 # ─────────────────────────────────────────────
-try:
-    engine = create_engine(
-        _SQLALCHEMY_URL,
-        echo=False,
-        pool_pre_ping=True,         # Tự kiểm tra connection trước khi dùng
-        pool_size=5,
-        max_overflow=10,
-        connect_args={
-            "timeout": 30,
-            "fast_executemany": True,
-        },
-    )
-    logger.info("[DB] SQLAlchemy engine khởi tạo thành công")
-except Exception as e:
+if not DB_SERVER or not DB_NAME:
     engine = None
-    logger.error(f"[DB] Không thể khởi tạo SQLAlchemy engine — {e}")
+    logger.error("[DB] DB_SERVER hoac DB_NAME chua duoc set trong .env — engine se la None")
+else:
+    try:
+        engine = create_engine(
+            _SQLALCHEMY_URL,
+            echo=False,
+            pool_pre_ping=True,         # Tu kiem tra connection truoc khi dung
+            pool_size=5,
+            max_overflow=10,
+            connect_args={
+                "timeout": 30,
+                "fast_executemany": True,
+            },
+        )
+        logger.info("[DB] SQLAlchemy engine khoi tao thanh cong")
+    except Exception as e:
+        engine = None
+        logger.error(f"[DB] Khong the khoi tao SQLAlchemy engine — {e}")
 
 
 # ─────────────────────────────────────────────
@@ -119,7 +123,7 @@ def test_connection() -> bool:
 def get_candles(
     symbol: str,
     timeframe: str,
-    provider: str = "CAPITALCOM",
+    provider: str,          # Required — khong de default, caller phai truyen tuong minh
     limit: int = 1000,
 ) -> pd.DataFrame:
     """

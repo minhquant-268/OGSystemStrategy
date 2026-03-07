@@ -34,15 +34,25 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 # Config đọc từ .env
 # ─────────────────────────────────────────────
+_REDIS_HOST = os.getenv("REDIS_HOST")
+_REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+_REDIS_PASS = os.getenv("REDIS_PASSWORD") or None
+
+if not _REDIS_HOST:
+    raise EnvironmentError(
+        "[Redis] REDIS_HOST chua duoc set trong .env\n"
+        "        Chinh sua file .env va them: REDIS_HOST=<dia_chi_redis>"
+    )
+
 _BASE_CONFIG: Dict[str, Any] = {
-    "host": os.getenv("REDIS_HOST", "localhost"),
-    "port": int(os.getenv("REDIS_PORT", 6379)),
-    "password": os.getenv("REDIS_PASSWORD") or None,
-    "decode_responses": True,          # Auto decode bytes -> str
-    "socket_connect_timeout": 5,       # Timeout kết nối ban đầu (giây)
-    "socket_timeout": 10,              # Timeout mỗi lệnh Redis (giây)
-    "health_check_interval": 30,       # Tự ping để giữ connection sống
-    "retry_on_timeout": True,
+    "host"                  : _REDIS_HOST,
+    "port"                  : _REDIS_PORT,
+    "password"              : _REDIS_PASS,
+    "decode_responses"      : True,    # Auto decode bytes -> str
+    "socket_connect_timeout": 5,       # Timeout ket noi ban dau (giay)
+    "socket_timeout"        : 10,      # Timeout moi lenh Redis (giay)
+    "health_check_interval" : 30,      # Tu ping de giu connection song
+    "retry_on_timeout"      : True,
 }
 
 # ─────────────────────────────────────────────
