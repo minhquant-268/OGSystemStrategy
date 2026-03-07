@@ -1,0 +1,147 @@
+# Project Structure — System Strategy (Module 4)
+
+> Hệ thống tính toán kỹ thuật realtime: Nhận nến mới từ Redis → Chạy Strategy → Đẩy Signal/OG lên Redis cho `OF_ctrader` (Module 5) thực thi lệnh.
+
+---
+
+## Cấu Trúc Thư Mục Thực Tế
+
+```
+system_strategy_revise/
+│
+├── src/                                    # Mã nguồn cốt lõi
+│   ├── __init__.py
+│   │
+│   ├── core/                               # Engine & orchestration chính
+│   │   ├── __init__.py
+│   │   ├── keyspace_monitor.py             # Subscribe Redis Keyspace Notification (candle:*)
+│   │   │                                   # → Parse event → lấy bucket → gọi strategy_engine
+│   │   ├── strategy_engine.py              # Load strategy_list.json → chạy strategy động
+│   │   │                                   # → trả về list kết quả cho redis_publisher
+│   │   ├── redis_publisher.py              # Ghi OG hash, signal hash, publish pub/sub channel
+│   │   └── cleanup_worker.py               # Background thread dọn Redis định kỳ 5 phút
+│   │                                       # (giữ tối đa 1000 items/list, xóa hash mồ côi)
+│   │
+│   ├── models/                             # Data schema chuẩn cho toàn hệ thống
+│   │   ├── __init__.py
+│   │   ├── candle.py                       # Schema Candlestick: date_time, OHLCV, provider, ...
+│   │   └── signal.py                       # Schema Signal: signal, entry, sl, tp, sl/tp_distance
+│   │
+│   ├── strategies/                         # Các chiến lược giao dịch
+│   │   ├── __init__.py
+│   │   ├── base_strategy.py                # Abstract class — contract bắt buộc cho mọi strategy
+│   │   │                                   #   calculate_signals(df: DataFrame) → DataFrame
+│   │   │                                   #   get_indicators(df: DataFrame)    → dict
+│   │   ├── strategy_comboATR.py            # Strategy: Combo ATR (MACD + SMA + ATR)
+│   │   └── strategy_MAcrossover.py         # Strategy: MA Crossover (EMA fast/slow crossover)
+│   │
+│   └── utils/                              # Tiện ích dùng chung (đặt trong src để tránh circular import)
+│       ├── __init__.py
+│       ├── helpers.py                      # normalize_dt_str, timestamp_to_ms, extract_key_ts
+│       ├── logger.py                       # Logger tập trung (RotatingFileHandler + console)
+│       │
+│       ├── connection/                     # Kết nối hạ tầng
+│       │   ├── db_connect.py               # SQL DB: get_candles(symbol, tf, limit) → DataFrame
+│       │   └── redis_connect.py            # Redis: create_client, get_bucket, publish_signal
+│       │
+│       └── indicators/                     # Mỗi file = 1 indicator độc lập
+│           ├── __init__.py
+│           ├── indicator_MA.py             # calculate_sma(), calculate_ema()
+│           ├── indicator_MACD.py           # calculate_macd() → (macd, signal, hist)
+│           ├── indicator_ATR.py            # calculate_atr() — Wilder's smoothing method
+│           ├── indicator_RSI.py            # calculate_rsi()
+│           └── indicator_BollingerBands.py # calculate_bollinger_bands() → (upper, mid, lower)
+│
+├── config/                                 # Cấu hình hệ thống (chỉ data, không chứa logic)
+│   ├── server_config.json                  # Kết nối SQL DB & Redis (host, port, password, db_number)
+│   ├── strategy_list.json                  # Danh sách strategy: enabled, class path, params, symbols
+│   ├── indicator_list.json                 # Registry tên các indicator đang active
+│   └── output_variable_list.json           # Danh sách field chuẩn đẩy lên Redis (OG/signal hash)
+│
+├── tests/                                  # Unit test & Integration test
+│   ├── __init__.py
+│   ├── test_indicators.py                  # Test: MA, MACD, ATR, RSI, BollingerBands
+│   └── test_strategies.py                  # Test: comboATR, MAcrossover
+│
+├── data/
+│   ├── raw/                                # Dữ liệu gốc chưa xử lý (không push git)
+│   └── processed/                          # Dữ liệu đã chuẩn hóa sẵn sàng dùng
+│
+├── docs/
+│   ├── project_structure.md                # File này — mô tả cấu trúc dự án
+│   ├── Archiecture.md                      # Kiến trúc tổng thể hệ thống (Module 1-6)
+│   ├── README.md                           # Hướng dẫn cài đặt và cách chạy
+│   └── requirements.txt                    # Danh sách Python package cần cài
+│
+├── notebooks/                              # Jupyter Notebook: thử nghiệm nhanh indicator/strategy
+│
+├── main.py                                 # Entry point — Realtime mode
+│                                           # Khởi động: cleanup_worker thread + keyspace_monitor
+└── back_fill_og.py                         # Entry point — Backfill mode (1000 nến lịch sử)
+    .gitignore
+```
+
+---
+
+## Luồng Hoạt Động (Data Flow)
+
+```
+Redis SET event: candle:{provider}:{symbol}:{tf}:{datetime}
+        │
+        ▼
+[src/core/keyspace_monitor.py]
+    ├─ Parse key → (provider, symbol, timeframe, timestamp)
+    ├─ SCAN Redis bucket: candle:{provider}:{symbol}:{tf}:*
+    ├─ Đọc tất cả Hash → dựng DataFrame chuẩn
+    └─ Gọi strategy_engine(df, provider, symbol, timeframe)
+                │
+                ▼
+        [src/core/strategy_engine.py]
+            ├─ Load config/strategy_list.json
+            ├─ Filter strategy: enabled=true, match symbol/timeframe
+            ├─ Dynamic import class (importlib)
+            ├─ strategy.calculate_signals(df)
+            │       └─ dùng src/utils/indicators/*.py
+            └─ Return list[{name, result_df}]
+                        │
+                        ▼
+                [src/core/redis_publisher.py]
+                    ├─ OG hash:     OG:{strategy}:{provider}:{symbol}:{tf}:{dt}
+                    ├─ signal hash: signal:{strategy}:{provider}:{symbol}:{tf}:{dt}
+                    ├─ LPUSH list:  OG:{strategy}:{provider}:{symbol}:{tf}
+                    └─ PUBLISH:     signals_channel:{strategy}:{provider}:{symbol}:{tf}
+
+[Background Thread — src/core/cleanup_worker.py]
+    └─ Mỗi 5 phút: scan OG:* / signal:* → trim > 1000 → xóa hash mồ côi
+```
+
+---
+
+## Redis Key Convention
+
+| Key Pattern | Loại Redis | Mô tả |
+|---|---|---|
+| `candle:{provider}:{symbol}:{tf}:{datetime}` | Hash | Nến gốc từ Module 2 (Data Feeder) |
+| `OG:{strategy}:{provider}:{symbol}:{tf}:{datetime}` | Hash | Tất cả nến (có/không signal) + indicators |
+| `OG:{strategy}:{provider}:{symbol}:{tf}` | List | Index datetime của OG (dùng để query) |
+| `signal:{strategy}:{provider}:{symbol}:{tf}:{datetime}` | Hash | Chỉ những nến có tín hiệu (signal ≠ 0) |
+| `signal:{strategy}:{provider}:{symbol}:{tf}` | List | Index datetime của signal |
+| `signals_channel:{strategy}:{provider}:{symbol}:{tf}` | Pub/Sub | Channel để OF_ctrader (Module 5) subscribe |
+
+---
+
+## Hướng Dẫn Mở Rộng
+
+### Thêm Strategy Mới
+1. Tạo `src/strategies/strategy_TenMoi.py`, kế thừa `BaseStrategy`
+2. Implement `calculate_signals(df)` → trả về df có cột `signal`, `entry`, `sl`, `tp`, `sl_distance`, `tp_distance`
+3. Thêm entry vào `config/strategy_list.json` với `"enabled": true`
+4. Thêm test vào `tests/test_strategies.py`
+5. ✅ **Không cần sửa `main.py` hay `strategy_engine.py`**
+
+### Thêm Indicator Mới
+1. Tạo `src/utils/indicators/indicator_TenMoi.py`
+2. Implement hàm tính toán, trả về `pd.Series`
+3. Thêm tên vào `config/indicator_list.json`
+4. Import và sử dụng trong strategy tương ứng
+5. Thêm unit test vào `tests/test_indicators.py`

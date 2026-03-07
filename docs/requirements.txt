@@ -1,0 +1,17 @@
+# System Strategy - Requirements
+# Cài đặt: pip install -r requirements.txt
+
+# Core
+pandas>=2.0.0
+numpy>=1.24.0
+redis>=5.0.0
+
+# Database
+pyodbc>=4.0.0        # SQL Server
+# pymysql>=1.0.0     # MySQL (bỏ comment nếu dùng MySQL)
+
+# Testing
+pytest>=7.0.0
+
+# Utilities
+python-dotenv>=1.0.0

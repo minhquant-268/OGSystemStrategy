@@ -1,0 +1,121 @@
+Hệ thống auto trading 
+
+#########################################################################################################################
+**************
+module 1: SQL database
+Nơi lưu trữ dữ liệu giá  
+
+#########################################################################################################################
+**************
+module 2: historical và realtime price (phần mềm javacript)
+Chương trình lấy giá lịch sử lưu vào SQL DB
+Chương trình lấy giá realtime để lưu vao redis và SQL DB 
+
+#########################################################################################################################
+**************
+module 3: Redis database (chạy server Ubutu)
+Dùng để làm pub/sub channel cho system strategy và OF_ctrader 
+
+#########################################################################################################################
+**************
+module 4: system strategy (python)
+Vai trò: tính toán các technical indicator dựa trên historical   
+
+Cấu trúc: 
+
+Folder 4.1 DB_and_Redis_Connect: kết nối tới SQL DB và Redis DB để nhận dữ liệu
+- File server_config.json chứa thông tin kết nối tới SQL DB và Redis DB 
+- File DB_server_connect.py chứa các hàm kết nối tới SQL DB và nhận data
+- File Redis_server_connect.py chứa các hàm kết nối tới Redis DB và nhận data
+- file received_variable_list.json chứa danh sách các tên biến nhận từ redis
+
+Folder 4.2 Indicator: mỗi file .py bên trong là 1 indicator 
+- File indicator_list.json chứa danh sách các indicator 
+Ví dụ:
+- File indicator_RSI.py chứa các hàm tính toán indicator RSI
+- File indicator_MACD.py chứa các hàm tính toán indicator MACD
+- File indicator_MA.py chứa các hàm tính toán indicator MA
+- File indicator_BollingerBands.py chứa các hàm tính toán indicator BollingerBands
+- File indicator_ATR.py chứa các hàm tính toán indicator ATR
+và nhiều indicator khác 
+
+Folder 4.3: Strategy: mỗi file .py bên trong là 1 strategy
+- File strategy_list.json chứa danh sách các strategy và cấu hình strategy nào sẽ chạy với symbol nào hoặc all symboll
+Ví dụ
+- File strategy_MAcrossover.py chứa các hàm tính toán signal strategy MAcrossover
+- File strategy_comboATR.py chứa các hàm tính toán signal strategy comboATR
+
+
+
+**********************************************************
+File main.py: lấy tính hiệu từ các file strategy và dựa trên cấu hình file strategy_list.json để đẩy tính hiệu singal tương ứng lên lên Redis DB để OF_ctrader nhận và thực thi lệnh . Việc tính toán dự trên các cây nến mới phát sinh
+- Đẩy lên redis với cấu trúc namespace db0/OG/strategy_name//provider/symbol/timeframe/hash => Bao gồm tất cả candle có signal và ko có signal
+- Đẩy lên redis với cấu trúc namespace db0/signal/strategy_name/provider/symbol/timeframe/hash => chỉ chứ các candle có signal
+
+các trường cần có trong hash
+date_time, close_time, provider, symbol, timeframe, timestampMs, signal, signalString, strategy, candle_key, created_at, open, high, low, close, volume, SMA, MACD, MACD_Signal, MACD_Hist, ATR, entry, sl, sl_distance, tp_distance
+ví dụ hash: OG:comboATR:CAPITALCOM:BTCUSD:10:2026-02-14 22:50:00
+ví dụ hash signal:MAcrossover:CAPITALCOM:BTCUSD:15:2026-03-07 03:45:00
+
+**********************************************************
+File back_fill_og: lấy tính hiệu từ các file strategy và dựa trên cấu hình file strategy_list.json để đẩy tính hiệu singal tương ứng lên lên Redis DB để OF_ctrader nhận và thực thi lệnh . Việc tính toán dự trên dữ liệu 1000 cây nến gần nhất
+
+**********************************************************
+- file received_variable_list.json chứa danh sách các tên biến đẩy lên redis
+
+#########################################################################################################################
+**************
+module 5: OF_ctrader 
+
+Folder 5.1 DB_and_Redis_Connect: kết nối tới SQL DB và Redis DB để nhận dữ liệu
+- File server_config.json chứa thông tin kết nối tới SQL DB và Redis DB 
+- File DB_server_connect.py chứa các hàm kết nối tới SQL DB và nhận data
+- File Redis_server_connect.py chứa các hàm kết nối tới Redis DB và nhận data
+- file received_variable_list.json chứa danh sách các tên biến nhận từ redis
+
+Folder 5.2: AM_manager
+file AM_rule.py: 3 quy tắc bảo vệ tài khoản:
+1. Balance Drawdown >= 3% → Close all + block không vô lệnh nữa
+   Công thức: DD% = (B0 - B) / B0 * 100, B0=BOD balance, B=current balance
+2. 3 consecutive losses → Close all + block không vô lệnh nữa
+3. Max 5 trades → Block new only
+
+
+AM Worker - Pre-trade Validator
+Validate lệnh trước khi vào thị trường
+Check AM Worker → Calculate volume → Approve/Reject
+
+AM Worker - Main Process
+Chương trình quản lý rủi ro tài khoản
+Chạy trong main.py như SLTP Monitor (thread-based)
+
+Chức năng:
+- Cập nhật stats mỗi 2 phút
+- Check 3 protection rules
+- Reset BOD balance lúc 00:00 UTC
+- Close all positions nếu vi phạm Rule 1 hoặc 2
+
+ATP Service - Anonymous Trading Personality Service
+Quản lý tính cách giao dịch ẩn danh để che giấu hành vi hệ thống trading
+
+Folder 5.3: 
+
+5.3.1 ctrader_connection: kết nối tới cTrader để nhận dữ liệu và đẩy lệnh order
+-file ctrader_connection.py
+-file ctrader_api.py chứa các hàm kết nối đặt lệnh lấy dữ liệu account, symbol, order, position, trade, lịch sử giao dịch. Tách cấu trúc group lại phù hợp
+
+Folder 5.4 Push_redis: lưu thông tin các lệnh và AM manager lên redis
+list các biến cần lưu.
+
+file main_ctrader.py call hàm check AM Worker và vô lệnh ctrader 
+
+
+
+#########################################################################################################################
+**************
+module 6: Dashboard
+File dashboard: để show chart chứa các signal và dữ liệu giá hiển thị 
+chart giá
+backtest
+dashboard AM manager
+error log
