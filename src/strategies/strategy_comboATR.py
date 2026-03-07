@@ -3,6 +3,15 @@ strategy_comboATR.py
 ====================
 ComboATR Strategy — Tim tin hieu vao lenh dua tren MACD + SMA + ATR.
 
+Luu y thiet ke (Cach A):
+    Strategy nay KHONG tu loc symbol hay timeframe.
+    Viec loc du lieu (symbol, timeframe) la trach nhiem cua strategy_engine:
+        strategy_engine doc config/strategy_list.json
+        -> loc df theo (provider, symbol, timeframe)
+        -> goi calculate_signals(df) voi df sach cua dung 1 cap (symbol, tf)
+
+    Strategy chi tap trung vao tinh toan indicator va sinh tin hieu.
+
 Logic chinh:
     BUY  (signal=1) khi:
         - Nen tang (close > open)
@@ -72,6 +81,15 @@ class ComboATRStrategy(BaseStrategy):
         """
         Tinh toan tin hieu ComboATR tren DataFrame nen.
 
+        Nhan vao df cua DUNG MOT cap (symbol, timeframe) — viec loc nay
+        do strategy_engine thuc hien truoc khi goi ham nay.
+        Xem: src/core/strategy_engine.py
+
+        Args:
+            df : pd.DataFrame voi cac cot bat buoc:
+                 [date_time, open, high, low, close]
+                 Sap xep theo date_time tang dan.
+
         Returns:
             df voi cac cot bo sung: MACD, SMA, ATR, signal, entry, sl, tp,
             sl_distance, tp_distance
@@ -110,7 +128,7 @@ class ComboATRStrategy(BaseStrategy):
             )
 
             # ── Sinh Signal (trang thai hien tai, khong repeat) ──────────
-            df["signal"] = 0
+            df["signal"]      = 0
             df["entry"]       = np.nan
             df["sl"]          = np.nan
             df["tp"]          = np.nan

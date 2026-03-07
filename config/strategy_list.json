@@ -3,34 +3,21 @@
         "name": "comboATR",
         "enabled": true,
         "class": "src.strategies.strategy_comboATR.ComboATRStrategy",
-        "params": {
-            "macd_fast": 5,
-            "macd_slow": 25,
-            "macd_signal": 5,
-            "sma_period": 20,
-            "atr_period": 5
-        },
-        "symbols": [
-            {
-                "provider": "CAPITALCOM",
-                "symbol": "BTCUSD",
-                "timeframe": "10"
-            },
-            {
-                "provider": "CAPITALCOM",
-                "symbol": "BTCUSD",
-                "timeframe": "15"
-            }
-        ]
+        "symbols": ["BTCUSD"],
+        "timeframes": ["10", "15"]
     },
     {
         "name": "MAcrossover",
         "enabled": true,
         "class": "src.strategies.strategy_MAcrossover.MACrossoverStrategy",
-        "params": {
-            "fast_period": 10,
-            "slow_period": 50
-        },
-        "symbols": "all"
+        "symbols": ["BTCUSD", "US30"],
+        "timeframes": ["60"]
+    },
+    {
+        "name": "RSI",
+        "enabled": false,
+        "class": "src.strategies.strategy_RSI.RSIStrategy",
+        "symbols": "all",
+        "timeframes": "all"
     }
 ]

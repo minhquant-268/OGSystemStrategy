@@ -5,12 +5,12 @@
 # ============================================================
 
 # ── Core Data ────────────────────────────────────────────────
-pandas>=2.0.0               # DataFrame, Series - dung trong tat ca indicator, strategy va get_candles()
-numpy>=1.24.0               # Tinh toan so hoc - dung trong ATR, RSI, ADX, Bollinger, strategy signal loop
+pandas>=2.0.0               # DataFrame, Series - dung trong tat ca indicator, strategy
+numpy>=1.24.0               # Tinh toan so hoc - dung trong ATR, RSI, MACD, strategy loop
 
 # ── Database (SQL Server) ────────────────────────────────────
 pyodbc>=4.0.0               # ODBC driver Python - ket noi truc tiep SQL Server
-sqlalchemy>=2.0.0           # ORM + engine - dung trong db_connect.py (create_engine, text)
+sqlalchemy>=2.0.0           # ORM + engine - dung trong db_connect.py
                             # pip install sqlalchemy[pyodbc]
 
 # ── Redis ────────────────────────────────────────────────────
@@ -21,13 +21,20 @@ redis>=5.0.0                # Redis client - dung trong redis_connect.py
 python-dotenv>=1.0.0        # Doc .env file - load_dotenv() trong db_connect va redis_connect
 
 # ── Testing ──────────────────────────────────────────────────
-pytest>=7.0.0               # Test framework - chay tests/
-pytest-cov>=4.0.0           # Coverage report - pip install pytest-cov
-                            # Chay: pytest --cov=src tests/
+pytest>=7.0.0               # Test framework - chay: pytest tests/test_strategies.py -v
+pytest-cov>=4.0.0           # Coverage report - chay: pytest --cov=src tests/
 
 # ── Ghi chu ─────────────────────────────────────────────────
 # Cac thu vien sau la built-in Python, KHONG can cai:
-#   os, sys, logging, traceback, typing, urllib.parse, json, io
+#   os, sys, logging, typing, json, importlib, dataclasses
+#
+# Phien ban da kiem tra (2026-03-07):
+#   pandas       3.0.0
+#   numpy        2.4.2
+#   pyodbc       5.2.0
+#   sqlalchemy   2.0.45
+#   redis        6.2.0
+#   python-dotenv 1.2.1
 #
 # Thu vien tuy chon (bo comment neu can):
 # aioodbc>=0.5.0            # Async ODBC - neu muon async DB query
