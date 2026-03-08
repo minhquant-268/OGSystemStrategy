@@ -6,10 +6,10 @@ import pandas as pd
 import numpy as np
 import pytest
 
-from utils.indicators.indicator_MA import calculate_sma, calculate_ema
-from utils.indicators.indicator_MACD import calculate_macd
-from utils.indicators.indicator_ATR import calculate_atr
-from utils.indicators.indicator_RSI import calculate_rsi
+from src.utils.indicators.MA import calculate_sma, calculate_ema
+from src.utils.indicators.MACD import calculate_macd
+from src.utils.indicators.ATR import calculate_atr
+from src.utils.indicators.RSI import calculate_rsi
 
 
 def make_sample_df(n=100):

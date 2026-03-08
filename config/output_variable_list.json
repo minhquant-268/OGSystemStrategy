@@ -1,28 +1,44 @@
-[
-    "date_time",
-    "close_time",
-    "provider",
-    "symbol",
-    "timeframe",
-    "timestampMs",
-    "signal",
-    "signalString",
-    "strategy",
-    "candle_key",
-    "created_at",
-    "open",
-    "high",
-    "low",
-    "close",
-    "volume",
-    "SMA",
-    "MACD",
-    "MACD_Signal",
-    "MACD_Hist",
-    "ATR",
-    "entry",
-    "sl",
-    "tp",
-    "sl_distance",
-    "tp_distance"
-]
+{
+    "_comment": "Thu tu cac field output tren Redis hash. Nhom 1 = co dinh, Nhom 2 = dynamic indicator (tu dong bo sung khi them strategy moi)",
+    "fixed_fields": [
+        "date_time",
+        "close_time",
+        "provider",
+        "symbol",
+        "timeframe",
+        "timestampMs",
+        "signal",
+        "signalString",
+        "strategy",
+        "candle_key",
+        "created_at",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "entry",
+        "sl",
+        "tp",
+        "sl_distance",
+        "tp_distance"
+    ],
+    "dynamic_indicator_examples": {
+        "comboATR": [
+            "SMA",
+            "MACD",
+            "MACD_Signal",
+            "MACD_Hist",
+            "ATR"
+        ],
+        "MACrossover": [
+            "MA_Short",
+            "MA_Long",
+            "ATR"
+        ],
+        "RSI": [
+            "RSI",
+            "ATR"
+        ]
+    }
+}

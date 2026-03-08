@@ -5,37 +5,40 @@
 # ============================================================
 
 # ── Core Data ────────────────────────────────────────────────
-pandas>=2.0.0               # DataFrame, Series - dung trong tat ca indicator, strategy
-numpy>=1.24.0               # Tinh toan so hoc - dung trong ATR, RSI, MACD, strategy loop
+pandas>=2.0.0               # DataFrame, Series - indicator, strategy, engine, publisher
+numpy>=1.24.0               # Tinh toan so hoc - ATR, RSI, MACD, strategy logic
 
 # ── Database (SQL Server) ────────────────────────────────────
-pyodbc>=4.0.0               # ODBC driver Python - ket noi truc tiep SQL Server
-sqlalchemy>=2.0.0           # ORM + engine - dung trong db_connect.py
+pyodbc>=4.0.0               # ODBC driver - ket noi SQL Server (db_connect.py)
+sqlalchemy>=2.0.0           # ORM + engine - db_connect.py, back_fill_og.py
                             # pip install sqlalchemy[pyodbc]
 
 # ── Redis ────────────────────────────────────────────────────
-redis>=5.0.0                # Redis client - dung trong redis_connect.py
-                            # Bao gom: redis.Redis, PubSub, scan, hset, lpush, publish
+redis>=5.0.0                # Redis client - redis_connect.py
+                            # Bao gom: Redis, PubSub, scan, hset, lpush, publish
 
 # ── Config / Environment ─────────────────────────────────────
-python-dotenv>=1.0.0        # Doc .env file - load_dotenv() trong db_connect va redis_connect
+python-dotenv>=1.0.0        # Doc .env file - db_connect.py, redis_connect.py
 
 # ── Testing ──────────────────────────────────────────────────
-pytest>=7.0.0               # Test framework - chay: pytest tests/test_strategies.py -v
-pytest-cov>=4.0.0           # Coverage report - chay: pytest --cov=src tests/
+pytest>=7.0.0               # Test framework - pytest tests/ -v
+pytest-cov>=4.0.0           # Coverage - pytest --cov=src tests/
 
 # ── Ghi chu ─────────────────────────────────────────────────
-# Cac thu vien sau la built-in Python, KHONG can cai:
-#   os, sys, logging, typing, json, importlib, dataclasses
+# Built-in Python (KHONG can cai):
+#   os, sys, logging, typing, json, importlib, dataclasses,
+#   threading, time, datetime, argparse, platform, ctypes,
+#   urllib.parse, traceback
 #
-# Phien ban da kiem tra (2026-03-07):
+# Phien ban da kiem tra (2026-03-09):
+#   Python       3.13.2
 #   pandas       3.0.0
 #   numpy        2.4.2
 #   pyodbc       5.2.0
 #   sqlalchemy   2.0.45
 #   redis        6.2.0
 #   python-dotenv 1.2.1
+#   pytest       9.0.2
 #
 # Thu vien tuy chon (bo comment neu can):
 # aioodbc>=0.5.0            # Async ODBC - neu muon async DB query
-# pymysql>=1.0.0            # MySQL driver - neu doi sang MySQL

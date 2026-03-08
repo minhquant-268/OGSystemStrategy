@@ -1,18 +1,18 @@
 # .gitignore - System Strategy
 
 # Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
-build/
+# __pycache__/
+# *.py[cod]
+# *.pyo
+# *.pyd
+# .Python
+# *.egg-info/
+# dist/
+# build/
 
 # Environment
-.env
-*.env
+# .env
+# *.env
 
 # IDE
 .vscode/
@@ -22,12 +22,6 @@ build/
 *.log
 logs/
 
-# Data (không push raw data lên git)
-data/raw/
-data/processed/
-
-# Config chứa credentials (chỉ push template, không push file thực)
-config/server_config.json
 
 # Redis dump
 dump.rdb
