@@ -60,12 +60,12 @@ class ComboATRStrategy(BaseStrategy):
 
     def __init__(
         self,
-        macd_fast: int = 5,
-        macd_slow: int = 25,
-        macd_signal: int = 5,
-        sma_period: int = 20,
-        atr_period: int = 5,
-        kSL: float = 2.3,
+        macd_fast: int = 2, #5
+        macd_slow: int = 10, #25
+        macd_signal: int = 5, #5
+        sma_period: int = 20, #20
+        atr_period: int = 5, #5
+        kSL: float = 2.3, #2.3
         kTP: float = 5.3,
     ):
         super().__init__(name="ComboATR")

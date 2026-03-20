@@ -3,15 +3,25 @@
         "name": "comboATR",
         "enabled": true,
         "class": "src.strategies.strategy_comboATR.ComboATRStrategy",
-        "symbols": ["BTCUSD"],
-        "timeframes": ["10", "15"]
+        "symbols": [
+            "BTCUSD"
+        ],
+        "timeframes": [
+            "5",
+            "15"
+        ]
     },
     {
         "name": "MAcrossover",
         "enabled": true,
         "class": "src.strategies.strategy_MAcrossover.MACrossoverStrategy",
-        "symbols": ["BTCUSD", "US30"],
-        "timeframes": ["60"]
+        "symbols": [
+            "BTCUSD",
+            "US30"
+        ],
+        "timeframes": [
+            "15"
+        ]
     },
     {
         "name": "RSI",
