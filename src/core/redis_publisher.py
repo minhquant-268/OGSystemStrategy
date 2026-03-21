@@ -318,11 +318,11 @@ def publish_strategy_result(
             signal_list_key = f"signal:{strategy_name}:{provider}:{symbol}:{timeframe}"
             lpush_list(client, signal_list_key, dt_for_key)
 
-        # ── 3. Publish pub/sub channel ────────────────────────────────────
-        channel = f"signals_channel:{strategy_name}:{provider}:{symbol}:{timeframe}"
-        msg = json.dumps({"key": signal_key, "payload": payload})
-        publish_channel(client, channel, msg)
-        logger.info(f"[Publisher] Published -> {channel}")
+            # ── 3. Publish pub/sub channel (CHI khi signal moi) ───────────
+            channel = f"signals_channel:{strategy_name}:{provider}:{symbol}:{timeframe}"
+            msg = json.dumps({"key": signal_key, "payload": payload})
+            publish_channel(client, channel, msg)
+            logger.info(f"[Publisher] Published -> {channel}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

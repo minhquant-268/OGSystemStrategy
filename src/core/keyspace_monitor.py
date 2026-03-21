@@ -30,6 +30,7 @@ from src.utils.connection.redis_connect import (
     get_redis_client,
     close_redis_client,
     get_candle_bucket,
+    scan_keys,
     enable_keyspace_notifications,
 )
 from src.core.strategy_engine import StrategyEngine
@@ -124,6 +125,10 @@ def handle_candle_event(
     try:
         # 1. Doc toan bo nen tu bucket
         records = get_candle_bucket(client, provider, symbol, timeframe)
+        logger.info(
+            f"[Monitor][DEBUG] get_candle_bucket({provider}:{symbol}:{timeframe}) "
+            f"=> {len(records) if records else 0} records"
+        )
         if not records:
             logger.warning(
                 f"[Monitor] Khong co nen trong bucket "
@@ -133,6 +138,10 @@ def handle_candle_event(
 
         # 2. Build DataFrame
         df = _build_df_from_bucket(records)
+        logger.info(
+            f"[Monitor][DEBUG] _build_df_from_bucket => shape={df.shape}, "
+            f"cols={list(df.columns)[:8]}"
+        )
         if df.empty:
             return
 

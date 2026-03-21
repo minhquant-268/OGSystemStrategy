@@ -119,12 +119,12 @@ class ComboATRStrategy(BaseStrategy):
             buy_cond = (
                 (close > open_)         # Nen tang
                 & (close > df["SMA"])   # Gia tren SMA
-                & (df["MACD"] > 0)      # MACD duong
+                & (df["MACD_Hist"] > 0)      # MACD duong
             )
             sell_cond = (
                 (close < open_)         # Nen giam
                 & (close < df["SMA"])   # Gia duoi SMA
-                & (df["MACD"] < 0)      # MACD am
+                & (df["MACD_Hist"] < 0)      # MACD am
             )
 
             # ── Sinh Signal (trang thai hien tai, khong repeat) ──────────
