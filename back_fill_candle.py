@@ -36,7 +36,7 @@ project_root = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, project_root)
 
 from src.utils.logger import setup_logger, get_logger
-from src.utils.connection.db_connect import get_candles, engine as db_engine
+from src.utils.connection.db_connect import get_candles, get_asset_provider_pairs, engine as db_engine
 from src.utils.connection.redis_connect import create_redis_client
 from sqlalchemy import text as sql_text
 
@@ -108,8 +108,7 @@ def get_all_providers() -> List[str]:
 
 def get_backfill_targets(config_path: str = CONFIG_PATH) -> List[Dict[str, str]]:
     """
-    Đọc strategy_list.json → trả về danh sách (symbol, timeframe) cần backfill.
-    Chỉ lấy từ strategy đang enabled, loại bỏ trùng lặp.
+    Đọc strategy_list.json → Lấy danh sách symbols → Query DB để tìm (provider, symbol) pairs.
     """
     try:
         with open(config_path, "r", encoding="utf-8") as f:
@@ -118,31 +117,46 @@ def get_backfill_targets(config_path: str = CONFIG_PATH) -> List[Dict[str, str]]
         logger.error(f"[Backfill] Không đọc được {config_path}: {e}")
         return []
 
-    seen = set()
-    targets = []
+    # 1. Thu thập tất cả symbols duy nhất từ config
+    config_symbols = set()
+    config_timeframes = {} # symbol -> set of timeframes
 
     for cfg in configs:
         if not cfg.get("enabled", False):
             continue
-
+        
         symbols = cfg.get("symbols", [])
         timeframes = cfg.get("timeframes", [])
-
+        
         if symbols == "all" or timeframes == "all":
-            logger.warning(
-                f"[Backfill] Strategy '{cfg.get('name')}' dùng 'all' — bỏ qua."
-            )
             continue
-
-        if not isinstance(symbols, list) or not isinstance(timeframes, list):
-            continue
-
+            
         for sym in symbols:
+            s_str = str(sym)
+            config_symbols.add(s_str)
+            if s_str not in config_timeframes:
+                config_timeframes[s_str] = set()
             for tf in timeframes:
-                key = f"{sym}:{tf}"
-                if key not in seen:
-                    seen.add(key)
-                    targets.append({"symbol": str(sym), "timeframe": str(tf)})
+                config_timeframes[s_str].add(str(tf))
+
+    if not config_symbols:
+        return []
+
+    # 2. Query DB để lấy các cặp (provider, symbol) hợp lệ
+    pairs = get_asset_provider_pairs(list(config_symbols))
+    
+    # 3. Kết hợp với timeframes
+    targets = []
+    for p in pairs:
+        symbol = p["symbol"]
+        provider = p["provider"]
+        if symbol in config_timeframes:
+            for tf in config_timeframes[symbol]:
+                targets.append({
+                    "symbol": symbol,
+                    "provider": provider,
+                    "timeframe": tf
+                })
 
     return targets
 
@@ -244,7 +258,14 @@ def _trim_to_limit(client, provider: str, symbol: str, timeframe: str, limit: in
         return 0
 
     excess = current_len - limit
-    old_dts = client.rpop(bucket_list_key, excess)
+    old_dts = []
+    for _ in range(excess):
+        dt = client.rpop(bucket_list_key)
+        if dt:
+            old_dts.append(dt)
+        else:
+            break
+
     if not old_dts:
         return 0
 
@@ -310,82 +331,88 @@ def run_backfill(
         job_num = 0
         total_jobs = len(providers) * len(targets)
 
-        for prov in providers:
-            for target in targets:
-                job_num += 1
-                symbol    = target["symbol"]
-                timeframe = target["timeframe"]
-                db_tf     = _convert_timeframe_for_db(timeframe)
+        # TRUOC DAY: for prov in providers: for target in targets:
+        # BAY GIO: targets da co "provider" tu DB, loop truc tiep target
+        for target in targets:
+            job_num += 1
+            prov      = target["provider"]
+            symbol    = target["symbol"]
+            timeframe = target["timeframe"]
+            db_tf     = _convert_timeframe_for_db(timeframe)
 
-                logger.info("-" * 50)
-                logger.info(
-                    f"[Backfill] [{job_num}/{total_jobs}] "
-                    f"{prov}:{symbol}:{timeframe} — lấy {limit} nến..."
+            # Neu user co specify --provider thi chi backfill provider do
+            if provider.lower() != "all" and prov.lower() != provider.lower():
+                continue
+
+            logger.info("-" * 50)
+            logger.info(
+                f"[Backfill] [{job_num}/{total_jobs}] "
+                f"{prov}:{symbol}:{timeframe} — lấy {limit} nến..."
+            )
+
+            # 1. Query từ SQL DB
+            df = get_candles(
+                symbol=symbol,
+                timeframe=db_tf,
+                provider=prov,
+                limit=limit,
+            )
+
+            if df.empty:
+                logger.warning(
+                    f"[Backfill] Không có dữ liệu DB cho "
+                    f"{prov}:{symbol}/{db_tf}. Bỏ qua."
                 )
+                fail_count += 1
+                continue
 
-                # 1. Query từ SQL DB
-                df = get_candles(
-                    symbol=symbol,
-                    timeframe=db_tf,
-                    provider=prov,
-                    limit=limit,
+            logger.info(f"[Backfill] Đã lấy {len(df)} nến từ DB")
+
+            # 2. Tìm date_time từ DB
+            df["date_time"] = pd.to_datetime(df["date_time"])
+            db_dts = set(
+                _ensure_utc(dt).strftime("%Y-%m-%d %H:%M:%S")
+                for dt in df["date_time"]
+                if not pd.isna(dt)
+            )
+
+            # 3. Tìm date_time đã có trong Redis
+            redis_dts = _get_redis_existing(client, prov, symbol, timeframe)
+
+            # 4. Tìm nến thiếu
+            missing_dts = db_dts - redis_dts
+
+            # Kiểm tra HASH bị mất (có trong list nhưng không có HASH)
+            for dt_str in redis_dts:
+                candle_key = f"candle:{prov}:{symbol}:{timeframe}:{dt_str}"
+                if not client.exists(candle_key):
+                    missing_dts.add(dt_str)
+                    logger.warning(f"  HASH thiếu cho {dt_str}")
+
+            if missing_dts:
+                logger.info(f"[Backfill] Tìm thấy {len(missing_dts)} nến thiếu")
+
+                added = _add_missing_candles(
+                    client, prov, symbol, timeframe, df, missing_dts
                 )
+                total_added += added
+                logger.info(f"[Backfill] Đã ghi {added} candle HASH vào Redis")
+                print(f"  Added {added} candles for {prov}:{symbol}:tf={timeframe}")
 
-                if df.empty:
-                    logger.warning(
-                        f"[Backfill] Không có dữ liệu DB cho "
-                        f"{prov}:{symbol}/{db_tf}. Bỏ qua."
-                    )
-                    fail_count += 1
-                    continue
+                # Rebuild list
+                _rebuild_list(client, prov, symbol, timeframe, df)
+                logger.info(f"[Backfill] Đã rebuild list key")
+            else:
+                logger.info(f"[Backfill] Không có nến thiếu — đã đầy đủ")
 
-                logger.info(f"[Backfill] Đã lấy {len(df)} nến từ DB")
+            # 5. Trim giữ tối đa limit nến
+            trimmed = _trim_to_limit(client, prov, symbol, timeframe, limit)
+            total_trimmed += trimmed
+            if trimmed > 0:
+                logger.info(f"[Backfill] Đã trim {trimmed} nến cũ")
+                print(f"  Trimmed {trimmed} old candles")
 
-                # 2. Tìm date_time từ DB
-                df["date_time"] = pd.to_datetime(df["date_time"])
-                db_dts = set(
-                    _ensure_utc(dt).strftime("%Y-%m-%d %H:%M:%S")
-                    for dt in df["date_time"]
-                    if not pd.isna(dt)
-                )
-
-                # 3. Tìm date_time đã có trong Redis
-                redis_dts = _get_redis_existing(client, prov, symbol, timeframe)
-
-                # 4. Tìm nến thiếu
-                missing_dts = db_dts - redis_dts
-
-                # Kiểm tra HASH bị mất (có trong list nhưng không có HASH)
-                for dt_str in redis_dts:
-                    candle_key = f"candle:{prov}:{symbol}:{timeframe}:{dt_str}"
-                    if not client.exists(candle_key):
-                        missing_dts.add(dt_str)
-                        logger.warning(f"  HASH thiếu cho {dt_str}")
-
-                if missing_dts:
-                    logger.info(f"[Backfill] Tìm thấy {len(missing_dts)} nến thiếu")
-
-                    added = _add_missing_candles(
-                        client, prov, symbol, timeframe, df, missing_dts
-                    )
-                    total_added += added
-                    logger.info(f"[Backfill] Đã ghi {added} candle HASH vào Redis")
-                    print(f"  Added {added} candles for {prov}:{symbol}:tf={timeframe}")
-
-                    # Rebuild list
-                    _rebuild_list(client, prov, symbol, timeframe, df)
-                    logger.info(f"[Backfill] Đã rebuild list key")
-                else:
-                    logger.info(f"[Backfill] Không có nến thiếu — đã đầy đủ")
-
-                # 5. Trim giữ tối đa limit nến
-                trimmed = _trim_to_limit(client, prov, symbol, timeframe, limit)
-                total_trimmed += trimmed
-                if trimmed > 0:
-                    logger.info(f"[Backfill] Đã trim {trimmed} nến cũ")
-                    print(f"  Trimmed {trimmed} old candles")
-
-                success_count += 1
+            success_count += 1
 
     except Exception as e:
         logger.error(f"[Backfill] Lỗi tổng thể: {e}", exc_info=True)

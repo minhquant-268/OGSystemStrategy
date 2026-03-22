@@ -222,6 +222,44 @@ def get_candles(
         return _empty_candle_df()
 
 
+def get_asset_provider_pairs(symbols: list) -> list:
+    """
+    Truy vấn bảng dbo.assets để tìm tất cả các cặp (provider, symbol) 
+    hợp lệ cho danh sách symbol đầu vào.
+    
+    Args:
+        symbols : List[str], vd ["BTCUSD", "ETHUSD"]
+        
+    Returns:
+        List[dict], vd [{"symbol": "BTCUSD", "provider": "CAPITALCOM"}, ...]
+    """
+    if engine is None:
+        return []
+    
+    if not symbols:
+        return []
+
+    # Sử dụng manual expansion cho IN clause vì pyodbc có thể kén chọn với tuple params trong text()
+    # symbols đến từ config nên an toàn
+    symbols_quoted = ", ".join([f"'{s}'" for s in symbols])
+    query = text(f"""
+        SELECT symbol, provider 
+        FROM dbo.assets 
+        WHERE symbol IN ({symbols_quoted}) AND isActive = 1
+    """)
+    
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(query)
+            pairs = [dict(row._mapping) for row in result]
+        
+        logger.info(f"[DB] Tìm thấy {len(pairs)} cặp (provider, symbol) cho {len(symbols)} symbols đầu vào")
+        return pairs
+    except Exception as e:
+        logger.error(f"[DB] Lỗi query get_asset_provider_pairs: {e}")
+        return []
+
+
 # ─────────────────────────────────────────────
 # Internal helpers
 # ─────────────────────────────────────────────

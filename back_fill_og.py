@@ -34,7 +34,7 @@ sys.path.insert(0, project_root)
 from src.utils.logger import setup_logger, get_logger
 from sqlalchemy import text as sql_text
 
-from src.utils.connection.db_connect import get_candles, engine as db_engine
+from src.utils.connection.db_connect import get_candles, get_asset_provider_pairs, engine as db_engine
 from src.utils.connection.redis_connect import create_redis_client
 from src.core.strategy_engine import StrategyEngine
 from src.core.redis_publisher import publish_backfill
@@ -83,58 +83,55 @@ def get_all_providers() -> List[str]:
 
 def get_backfill_targets(config_path: str = CONFIG_PATH) -> List[Dict[str, str]]:
     """
-    Doc strategy_list.json va tra ve danh sach tat ca (symbol, timeframe) can backfill.
-    Chi lay tu cac strategy dang enabled.
-    Loai bo trung lap.
-
-    Luu y:
-        - symbols="all" hoac timeframes="all" se bi bo qua
-          vi backfill can biet cu the symbol/timeframe de query DB.
-        - Neu muon backfill "all", can liet ke cu the trong config.
-
-    Returns:
-        List[{"symbol": "BTCUSD", "timeframe": "m10"}]
+    Đọc strategy_list.json → Lấy danh sách symbols → Query DB để tìm (provider, symbol) pairs.
     """
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             configs = json.load(f)
     except Exception as e:
-        logger.error(f"[Backfill] Khong doc duoc {config_path}: {e}")
+        logger.error(f"[Backfill] Không đọc được {config_path}: {e}")
         return []
 
-    seen = set()
-    targets = []
+    # 1. Thu thập tất cả symbols duy nhất từ config
+    config_symbols = set()
+    config_timeframes = {} # symbol -> set of timeframes
 
     for cfg in configs:
         if not cfg.get("enabled", False):
             continue
-
+        
         symbols = cfg.get("symbols", [])
         timeframes = cfg.get("timeframes", [])
-
-        # Bo qua "all" — backfill can biet cu the
-        if symbols == "all":
-            logger.warning(
-                f"[Backfill] Strategy '{cfg.get('name')}' co symbols='all' "
-                "— bo qua. Can liet ke cu the de backfill."
-            )
+        
+        if symbols == "all" or timeframes == "all":
             continue
-        if timeframes == "all":
-            logger.warning(
-                f"[Backfill] Strategy '{cfg.get('name')}' co timeframes='all' "
-                "— bo qua. Can liet ke cu the de backfill."
-            )
-            continue
-
-        if not isinstance(symbols, list) or not isinstance(timeframes, list):
-            continue
-
+            
         for sym in symbols:
+            s_str = str(sym)
+            config_symbols.add(s_str)
+            if s_str not in config_timeframes:
+                config_timeframes[s_str] = set()
             for tf in timeframes:
-                key = f"{sym}:{tf}"
-                if key not in seen:
-                    seen.add(key)
-                    targets.append({"symbol": str(sym), "timeframe": str(tf)})
+                config_timeframes[s_str].add(str(tf))
+
+    if not config_symbols:
+        return []
+
+    # 2. Query DB để lấy các cặp (provider, symbol) hợp lệ
+    pairs = get_asset_provider_pairs(list(config_symbols))
+    
+    # 3. Kết hợp với timeframes
+    targets = []
+    for p in pairs:
+        symbol = p["symbol"]
+        provider = p["provider"]
+        if symbol in config_timeframes:
+            for tf in config_timeframes[symbol]:
+                targets.append({
+                    "symbol": symbol,
+                    "provider": provider,
+                    "timeframe": tf
+                })
 
     return targets
 
@@ -203,87 +200,90 @@ def run_backfill(
         job_num = 0
         total_jobs = len(providers) * len(targets)
 
-        for prov in providers:
-            for target in targets:
-                job_num += 1
-                symbol    = target["symbol"]
-                timeframe = target["timeframe"]
+        # TRUOC DAY: for prov in providers: for target in targets:
+        # BAY GIO: targets da co "provider" tu DB
+        for target in targets:
+            job_num += 1
+            prov      = target["provider"]
+            symbol    = target["symbol"]
+            timeframe = target["timeframe"]
 
-                logger.info("-" * 50)
-                logger.info(
-                    f"[Backfill] [{job_num}/{total_jobs}] "
-                    f"{prov}:{symbol}:{timeframe} — lay {limit} nen..."
+            # Neu user co specify --provider thi chi backfill provider do
+            if provider.lower() != "all" and prov.lower() != provider.lower():
+                continue
+
+            logger.info("-" * 50)
+            logger.info(
+                f"[Backfill] [{job_num}/{total_jobs}] "
+                f"{prov}:{symbol}:{timeframe} — lay {limit} nen..."
+            )
+
+            # 3a. Query tu SQL DB
+            db_timeframe = _convert_timeframe_for_db(timeframe)
+
+            df = get_candles(
+                symbol=symbol,
+                timeframe=db_timeframe,
+                provider=prov,
+                limit=limit,
+            )
+
+            if df.empty:
+                logger.warning(
+                    f"[Backfill] Khong co du lieu DB cho "
+                    f"{prov}:{symbol}/{db_timeframe}. Bo qua."
                 )
+                fail_count += 1
+                continue
 
-                # 3a. Query tu SQL DB
-                # db_connect.get_candles nhan timeframe dang "m10", "m15", "h1"
-                # strategy_list.json dung "10", "15", "60"
-                # Can convert: "10" → "m10", "60" → "h1"
-                db_timeframe = _convert_timeframe_for_db(timeframe)
+            # 3b. Them metadata de engine co the filter
+            df["provider"]  = prov
+            df["symbol"]    = symbol
+            df["timeframe"] = timeframe  # Giu dinh dang goc tu config
 
-                df = get_candles(
-                    symbol=symbol,
-                    timeframe=db_timeframe,
-                    provider=prov,
-                    limit=limit,
+            logger.info(f"[Backfill] Da lay {len(df)} nen tu DB")
+
+            # 3c. Chay strategy engine
+            results = engine.run(df)
+
+            if not results:
+                logger.warning(
+                    f"[Backfill] Engine khong tra ve ket qua cho "
+                    f"{prov}:{symbol}/{timeframe}. Bo qua."
                 )
+                fail_count += 1
+                continue
 
-                if df.empty:
-                    logger.warning(
-                        f"[Backfill] Khong co du lieu DB cho "
-                        f"{prov}:{symbol}/{db_timeframe}. Bo qua."
+            # 3d. Publish len Redis
+            for result in results:
+                try:
+                    wrote = publish_backfill(
+                        client=client,
+                        result=result,
+                        max_per_list=limit,
                     )
-                    fail_count += 1
-                    continue
+                    total_candles += wrote
 
-                # 3b. Them metadata de engine co the filter
-                df["provider"]  = prov
-                df["symbol"]    = symbol
-                df["timeframe"] = timeframe  # Giu dinh dang goc tu config
+                    # Dem signal
+                    if result.df_result is not None and "signal" in result.df_result.columns:
+                        sig_count = (
+                            result.df_result["signal"]
+                            .apply(lambda x: int(float(x)) in (1, 2))
+                            .sum()
+                        )
+                        total_signals += sig_count
 
-                logger.info(f"[Backfill] Da lay {len(df)} nen tu DB")
-
-                # 3c. Chay strategy engine
-                results = engine.run(df)
-
-                if not results:
-                    logger.warning(
-                        f"[Backfill] Engine khong tra ve ket qua cho "
-                        f"{prov}:{symbol}/{timeframe}. Bo qua."
+                    logger.info(
+                        f"[Backfill] Ghi {wrote} nen | "
+                        f"Strategy: {result.strategy_name}"
                     )
-                    fail_count += 1
-                    continue
+                except Exception as e:
+                    logger.error(
+                        f"[Backfill] Loi publish {result.strategy_name}: {e}",
+                        exc_info=True,
+                    )
 
-                # 3d. Publish len Redis
-                for result in results:
-                    try:
-                        wrote = publish_backfill(
-                            client=client,
-                            result=result,
-                            max_per_list=limit,
-                        )
-                        total_candles += wrote
-
-                        # Dem signal
-                        if result.df_result is not None and "signal" in result.df_result.columns:
-                            sig_count = (
-                                result.df_result["signal"]
-                                .apply(lambda x: int(float(x)) in (1, 2))
-                                .sum()
-                            )
-                            total_signals += sig_count
-
-                        logger.info(
-                            f"[Backfill] Ghi {wrote} nen | "
-                            f"Strategy: {result.strategy_name}"
-                        )
-                    except Exception as e:
-                        logger.error(
-                            f"[Backfill] Loi publish {result.strategy_name}: {e}",
-                            exc_info=True,
-                        )
-
-                success_count += 1
+            success_count += 1
 
     except Exception as e:
         logger.error(f"[Backfill] Loi tong the: {e}", exc_info=True)

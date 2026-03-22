@@ -289,8 +289,18 @@ class StrategyEngine:
             return []
 
         # Cartesian product: moi (symbol, timeframe)
-        return [
-            {"provider": "", "symbol": sym, "timeframe": tf}
-            for sym in sym_list
-            for tf in tf_list
-        ]
+        # Nhung can kem theo 'provider' neu co trong DF de ket qua unique
+        targets = []
+        for sym in sym_list:
+            if "provider" in df.columns:
+                # Lay cac provider thuc te dang co cho symbol nay trong DF
+                df_sym = df[df["symbol"] == sym]
+                prov_list = df_sym["provider"].unique().tolist() if not df_sym.empty else [""]
+                for p in prov_list:
+                    for tf in tf_list:
+                        targets.append({"provider": str(p), "symbol": sym, "timeframe": tf})
+            else:
+                for tf in tf_list:
+                    targets.append({"provider": "", "symbol": sym, "timeframe": tf})
+
+        return targets
