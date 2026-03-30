@@ -1,0 +1,14 @@
+{
+    "pythonVersion": "3.10",
+    "venvPath": ".",
+    "include": ["src", "tests", "main.py"],
+    "extraPaths": ["."],
+    "executionEnvironments": [
+        {
+            "root": ".",
+            "extraPaths": ["."]
+        }
+    ],
+    "reportMissingImports": "warning",
+    "reportMissingModuleSource": "none"
+}

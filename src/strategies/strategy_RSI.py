@@ -33,8 +33,8 @@ import pandas as pd
 import numpy as np
 
 from src.strategies.base_strategy import BaseStrategy
-from src.utils.indicators.RSI import calculate_rsi
-from src.utils.indicators.ATR import calculate_atr
+from src.indicators.RSI import calculate_rsi
+from src.indicators.ATR import calculate_atr
 
 logger = logging.getLogger(__name__)
 

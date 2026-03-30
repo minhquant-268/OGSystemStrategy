@@ -49,9 +49,9 @@ import pandas as pd
 import numpy as np
 
 from src.strategies.base_strategy import BaseStrategy
-from src.utils.indicators.MACD import calculate_macd
-from src.utils.indicators.MA import calculate_sma
-from src.utils.indicators.ATR import calculate_atr
+from src.indicators.MACD import calculate_macd
+from src.indicators.MA import calculate_sma
+from src.indicators.ATR import calculate_atr
 
 logger = logging.getLogger(__name__)
 

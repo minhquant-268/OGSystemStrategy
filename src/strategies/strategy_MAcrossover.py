@@ -31,8 +31,8 @@ import pandas as pd
 import numpy as np
 
 from src.strategies.base_strategy import BaseStrategy
-from src.utils.indicators.MA import calculate_ema
-from src.utils.indicators.ATR import calculate_atr
+from src.indicators.MA import calculate_ema
+from src.indicators.ATR import calculate_atr
 
 logger = logging.getLogger(__name__)
 
