@@ -302,12 +302,12 @@ class TestStrategyEngine:
         assert isinstance(results, list)
 
     def test_run_with_matching_symbols(self):
-        """ComboATR config co BTCUSD/10 va BTCUSD/15, phai tra ve 2 result."""
-        df = make_multi_symbol_df(symbols=["BTCUSD"], timeframes=["10", "15"])
+        """ComboATR config co BTCUSD/5 va BTCUSD/15, phai tra ve 2 result."""
+        df = make_multi_symbol_df(symbols=["BTCUSD"], timeframes=["5", "15"])
         results = self.engine.run(df)
         combo_results = [r for r in results if r.strategy_name == "comboATR"]
         assert len(combo_results) == 2, (
-            f"Expected 2 results for comboATR (BTCUSD/10 + BTCUSD/15), got {len(combo_results)}"
+            f"Expected 2 results for comboATR (BTCUSD/5 + BTCUSD/15), got {len(combo_results)}"
         )
 
     def test_run_result_has_signal_column(self):

@@ -38,6 +38,7 @@ from src.utils.connection.db_connect import get_candles, get_asset_provider_pair
 from src.utils.connection.redis_connect import create_redis_client
 from src.core.strategy_engine import StrategyEngine
 from src.core.redis_publisher import publish_backfill
+from src.core.signal_filter import apply_knn_filter
 
 logger = get_logger()
 
@@ -245,6 +246,9 @@ def run_backfill(
 
             # 3c. Chay strategy engine
             results = engine.run(df)
+
+            # 3c.5 Apply KNN Trend filter
+            results = [apply_knn_filter(r) for r in results]
 
             if not results:
                 logger.warning(

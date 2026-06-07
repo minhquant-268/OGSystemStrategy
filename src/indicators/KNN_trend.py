@@ -88,7 +88,7 @@ CACH SU DUNG TRONG STRATEGY:
     # knn_color = -1: dang giam (Down)
 
 Duoc dung boi:
-    (chua duoc tich hop — san sang de strategy su dung)
+    src/core/signal_filter.py  (tich hop vao KNN filter pipeline)
 """
 
 import pandas as pd

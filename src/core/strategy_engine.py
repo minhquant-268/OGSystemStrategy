@@ -47,6 +47,7 @@ class StrategyResult:
     symbol        : str
     timeframe     : str
     df_result     : pd.DataFrame
+    knn_filter_config : dict = field(default_factory=dict)
 
 
 @dataclass
@@ -57,6 +58,7 @@ class StrategyConfig:
     class_    : str   # duong dan import (vd: src.strategies.strategy_comboATR.ComboATRStrategy)
     symbols   : Any   # list[str] | "all"
     timeframes: Any   # list[str] | "all"
+    knn_filter: dict = field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -99,6 +101,7 @@ class StrategyEngine:
                     class_     = item["class"],
                     symbols    = item.get("symbols", "all"),
                     timeframes = item.get("timeframes", "all"),
+                    knn_filter = item.get("knn_filter", {}),
                 )
                 self._configs.append(cfg)
 
@@ -246,6 +249,7 @@ class StrategyEngine:
                         symbol        = symbol,
                         timeframe     = timeframe,
                         df_result     = df_result,
+                        knn_filter_config = cfg.knn_filter,
                     ))
                 except Exception as e:
                     logger.error(

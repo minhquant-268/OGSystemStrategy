@@ -9,7 +9,12 @@
         "timeframes": [
             "5",
             "15"
-        ]
+        ],
+        "knn_filter": {
+            "enabled": true,
+            "n_neighbors": 3,
+            "smoothing_period": 50
+        }
     },
     {
         "name": "MAcrossover",
@@ -21,13 +26,23 @@
         ],
         "timeframes": [
             "15"
-        ]
+        ],
+        "knn_filter": {
+            "enabled": true,
+            "n_neighbors": 3,
+            "smoothing_period": 50
+        }
     },
     {
         "name": "RSI",
         "enabled": false,
         "class": "src.strategies.strategy_RSI.RSIStrategy",
         "symbols": "all",
-        "timeframes": "all"
+        "timeframes": "all",
+        "knn_filter": {
+            "enabled": true,
+            "n_neighbors": 3,
+            "smoothing_period": 50
+        }
     }
 ]

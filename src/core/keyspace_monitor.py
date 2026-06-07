@@ -35,6 +35,7 @@ from src.utils.connection.redis_connect import (
 )
 from src.core.strategy_engine import StrategyEngine
 from src.core.redis_publisher import publish_strategy_result
+from src.core.signal_filter import apply_knn_filter
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,9 @@ def handle_candle_event(
 
         # 3. Chay strategy engine
         results = engine.run(df)
+
+        # 3.5 Apply KNN Trend filter
+        results = [apply_knn_filter(r) for r in results]
 
         # 4. Publish ket qua
         for result in results:

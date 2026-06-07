@@ -77,7 +77,7 @@ _FIXED_DATA_FIELDS = [
 _ALL_FIXED_FIELDS = {
     "date_time", "close_time", "provider", "symbol", "timeframe",
     "timestampMs", "signal", "signalString", "strategy", "candle_key",
-    "created_at",
+    "created_at", "strategy_signal",
     "open", "high", "low", "close", "volume",
     "entry", "sl", "tp", "sl_distance", "tp_distance",
 }
@@ -205,6 +205,13 @@ def _build_payload(
             payload[col] = "nan" if pd.isna(val) else str(val)
         elif col in _NAN_FALLBACK_FIELDS:
             payload[col] = "nan"
+
+    # ── strategy_signal (signal goc tu strategy, truoc khi KNN filter) ────
+    if "strategy_signal" in row.index:
+        try:
+            payload["strategy_signal"] = str(int(float(row["strategy_signal"])))
+        except Exception:
+            payload["strategy_signal"] = "0"
 
     # ── NHOM 2: DYNAMIC INDICATOR FIELDS ─────────────────────────────────
     # Lay TAT CA cot con lai tu row ma chua nam trong payload.

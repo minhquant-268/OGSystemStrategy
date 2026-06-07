@@ -9,6 +9,7 @@
         "timestampMs",
         "signal",
         "signalString",
+        "strategy_signal",
         "strategy",
         "candle_key",
         "created_at",
@@ -29,16 +30,28 @@
             "MACD",
             "MACD_Signal",
             "MACD_Hist",
-            "ATR"
+            "ATR",
+            "KNN_MA",
+            "KNN_AVG",
+            "KNN_PRED",
+            "KNN_COLOR"
         ],
         "MACrossover": [
             "MA_Short",
             "MA_Long",
-            "ATR"
+            "ATR",
+            "KNN_MA",
+            "KNN_AVG",
+            "KNN_PRED",
+            "KNN_COLOR"
         ],
         "RSI": [
             "RSI",
-            "ATR"
+            "ATR",
+            "KNN_MA",
+            "KNN_AVG",
+            "KNN_PRED",
+            "KNN_COLOR"
         ]
     }
 }
